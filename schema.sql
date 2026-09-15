@@ -125,7 +125,30 @@ insert into public.alert_rules (label, pattern, min_volume, severity) values
   ('Gezondheidscrisis',  'outbreak|epidemic|pandemic|cholera|ebola|uitbraak|brote|quarantine',                  20000,  'high'),
   ('Verkiezingen',       'election|verkiezing|elecciones|referendum|ballot|stembus',                            50000,  'medium'),
   ('Economische stress', 'devaluation|hyperinflation|fuel shortage|blackout|apagon|stroomuitval|bank run',      50000,  'medium'),
-  ('Grens en migratie',  'border closure|frontera|grens|refugee|vluchteling|migrant|asylum',                    50000,  'medium')
+  ('Grens en migratie',  'border closure|frontera|grens|refugee|vluchteling|migrant|asylum',                    50000,  'medium'),
+  -- Bredere, generieke categorieen voor internationale zaken/politiek (defensie,
+  -- diplomatie, sancties, cyber, regeringscrises) i.p.v. alleen concrete incidenten.
+  ('Wapens en militaire dreiging',
+   'weapon|wapen|missile|raket|warhead|kernwapen|hypersonic|space weapon|ruimtewapen|nuclear arsenal|'
+   || 'kernarsenaal|arms deal|arms race|arms embargo|wapenhandel|wapenwedloop|troop surge|troepenopbouw|'
+   || 'military buildup|airstrike|luchtaanval|drone strike|dronestrike|\mwar\M|oorlog|invasion|invasie|'
+   || 'annexation|annexatie|ceasefire|staakt-het-vuren|wapenstilstand',
+   0, 'critical'),
+  ('Diplomatie en bondgenootschappen',
+   'nato|navo|diplomatic crisis|diplomatieke crisis|verdrag|treaty|alliance|bondgenootschap|summit|'
+   || 'topoverleg|topontmoeting|ambassadeur|ambassador|expulsion of diplomats|uitwijzing diplomaten',
+   20000, 'medium'),
+  ('Sancties en handelsconflict',
+   'sanctions|sancties|trade war|handelsoorlog|tariffs|tarieven|embargo|export ban|exportverbod|boycot|boycott',
+   20000, 'medium'),
+  ('Cyberaanval en spionage',
+   'cyberattack|cyberaanval|cyber attack|espionage|spionage|data breach|datalek|state-sponsored hack|'
+   || 'hacked|surveillance|spyware',
+   20000, 'high'),
+  ('Regeringscrisis',
+   'resignation|aftreden|ontslag kabinet|impeachment|afzetting|coalition collapse|kabinetscrisis|'
+   || 'parliament dissolved|parlement ontbonden|vote of no confidence|motie van wantrouwen',
+   0, 'high')
 on conflict (label) do nothing;
 
 -- ----------------------------------------------------------------------------
@@ -306,7 +329,13 @@ create trigger trg_trends_alerts
 -- ----------------------------------------------------------------------------
 --  Views voor het dashboard
 -- ----------------------------------------------------------------------------
-create or replace view public.v_trends_enriched as
+-- Views worden met drop + create herbouwd i.p.v. create or replace: nieuwe
+-- kolommen op public.trends (via alter table add column) schuiven de
+-- positie van t.* op, en create or replace view staat geen kolomherschikking
+-- toe ("cannot change name of view column"). Drop+create heeft die beperking
+-- niet en blijft zo werken als het schema verder groeit.
+drop view if exists public.v_trends_enriched;
+create view public.v_trends_enriched as
   select t.*,
          c.name   as country_name,
          c.region as country_region
@@ -315,7 +344,8 @@ create or replace view public.v_trends_enriched as
 
 alter view public.v_trends_enriched set (security_invoker = on);
 
-create or replace view public.v_active_alerts as
+drop view if exists public.v_active_alerts;
+create view public.v_active_alerts as
   select a.*,
          c.name        as country_name,
          c.region      as country_region,
