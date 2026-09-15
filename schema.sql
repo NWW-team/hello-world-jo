@@ -136,6 +136,7 @@ create index if not exists alerts_open_idx       on public.alerts (created_at de
 create or replace function public.fn_trends_compute_velocity()
 returns trigger
 language plpgsql
+set search_path = public
 as $velocity$
 declare
   prev_volume bigint;
@@ -319,6 +320,7 @@ create policy "alerts_acknowledge" on public.alerts
 create or replace function public.fn_alerts_stamp_ack()
 returns trigger
 language plpgsql
+set search_path = public
 as $ack$
 begin
   if new.acknowledged_at is distinct from old.acknowledged_at then
@@ -375,6 +377,17 @@ begin
   return removed;
 end;
 $prune$;
+
+-- ----------------------------------------------------------------------------
+--  Functierechten: niets in public is aanroepbaar via de REST-API.
+--  Zonder dit kan iedereen met de anon-sleutel /rest/v1/rpc/fn_prune_trends
+--  aanroepen en daarmee data verwijderen. Triggers draaien als tabeleigenaar
+--  en blijven dus gewoon werken.
+-- ----------------------------------------------------------------------------
+revoke execute on function public.fn_prune_trends()            from anon, authenticated, public;
+revoke execute on function public.fn_trends_evaluate_alerts()  from anon, authenticated, public;
+revoke execute on function public.fn_trends_compute_velocity() from anon, authenticated, public;
+revoke execute on function public.fn_alerts_stamp_ack()        from anon, authenticated, public;
 
 -- ============================================================================
 --  OPTIONEEL: periodiek ophalen via pg_cron
