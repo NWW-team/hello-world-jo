@@ -234,8 +234,15 @@
 (() => {
   "use strict";
 
-  // Vul deze in om het instelscherm over te slaan bij een vaste deployment.
-  const BUILT_IN_CONFIG = { url: "", anonKey: "" };
+  // Vaste projectgegevens: het instelscherm wordt hiermee overgeslagen.
+  // De anon-sleutel hoort in de browser thuis; RLS bepaalt wat zichtbaar is,
+  // en zonder ingelogde sessie geeft deze sleutel nergens toegang toe.
+  const BUILT_IN_CONFIG = {
+    url: "https://fvidstcblnqamerlxvdc.supabase.co",
+    anonKey: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ2aWRzdGNibG5xYW1lcmx4dmRjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODk0NTQyOTcsImV4cCI6MjEwNTAzMDI5N30.mObNqf4TxJDdL681xR1iyPKzgGckYtZOngzn2hILWOs",
+  };
+
+  const USING_BUILT_IN_CONFIG = Boolean(BUILT_IN_CONFIG.url && BUILT_IN_CONFIG.anonKey);
 
   const STORAGE_KEY = "bz-ews-config";
   const BANNER_DISMISS_KEY = "bz-ews-banner-dismissed";
@@ -742,6 +749,11 @@
   el("filter-query").addEventListener("input", render);
   el("filter-country").addEventListener("change", render);
   el("filter-window").addEventListener("change", () => refresh());
+
+  if (USING_BUILT_IN_CONFIG) {
+    el("settings-btn").remove();
+    el("auth-settings-btn").remove();
+  }
 
   const config = loadConfig();
   if (config) {
