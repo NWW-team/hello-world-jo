@@ -136,6 +136,7 @@ create index if not exists alerts_open_idx       on public.alerts (created_at de
 create or replace function public.fn_trends_compute_velocity()
 returns trigger
 language plpgsql
+set search_path = public
 as $velocity$
 declare
   prev_volume bigint;
@@ -276,28 +277,70 @@ create or replace view public.v_active_alerts as
 alter view public.v_active_alerts set (security_invoker = on);
 
 -- ----------------------------------------------------------------------------
---  Row Level Security: dashboard leest mee, schrijven gaat via service_role
+--  Row Level Security: alleen ingelogde gebruikers lezen, schrijven via service_role
 -- ----------------------------------------------------------------------------
 alter table public.monitored_countries enable row level security;
 alter table public.trends              enable row level security;
 alter table public.alert_rules         enable row level security;
 alter table public.alerts              enable row level security;
 
+-- De anon-sleutel staat in de browser en geeft daarom nergens toegang toe.
+revoke all on public.monitored_countries from anon;
+revoke all on public.trends              from anon;
+revoke all on public.alert_rules         from anon;
+revoke all on public.alerts              from anon;
+revoke all on public.v_trends_enriched   from anon;
+revoke all on public.v_active_alerts     from anon;
+
 drop policy if exists "countries_read" on public.monitored_countries;
 create policy "countries_read" on public.monitored_countries
-  for select to anon, authenticated using (true);
+  for select to authenticated using (true);
 
 drop policy if exists "trends_read" on public.trends;
 create policy "trends_read" on public.trends
-  for select to anon, authenticated using (true);
+  for select to authenticated using (true);
 
 drop policy if exists "alert_rules_read" on public.alert_rules;
 create policy "alert_rules_read" on public.alert_rules
-  for select to anon, authenticated using (true);
+  for select to authenticated using (true);
 
 drop policy if exists "alerts_read" on public.alerts;
 create policy "alerts_read" on public.alerts
-  for select to anon, authenticated using (true);
+  for select to authenticated using (true);
+
+-- Afvinken mag, maar uitsluitend op deze twee kolommen.
+revoke update on public.alerts from authenticated;
+grant  update (acknowledged_at, acknowledged_by) on public.alerts to authenticated;
+
+drop policy if exists "alerts_acknowledge" on public.alerts;
+create policy "alerts_acknowledge" on public.alerts
+  for update to authenticated using (true) with check (true);
+
+-- De client mag niet bepalen wie er afvinkte; dat leest de trigger uit het JWT.
+create or replace function public.fn_alerts_stamp_ack()
+returns trigger
+language plpgsql
+set search_path = public
+as $ack$
+begin
+  if new.acknowledged_at is distinct from old.acknowledged_at then
+    if new.acknowledged_at is null then
+      new.acknowledged_by := null;
+    else
+      new.acknowledged_at := now();
+      new.acknowledged_by := coalesce(auth.jwt() ->> 'email', auth.uid()::text);
+    end if;
+  else
+    new.acknowledged_by := old.acknowledged_by;
+  end if;
+  return new;
+end;
+$ack$;
+
+drop trigger if exists trg_alerts_stamp_ack on public.alerts;
+create trigger trg_alerts_stamp_ack
+  before update on public.alerts
+  for each row execute function public.fn_alerts_stamp_ack();
 
 -- ----------------------------------------------------------------------------
 --  Realtime voor live dashboard-updates
@@ -334,6 +377,17 @@ begin
   return removed;
 end;
 $prune$;
+
+-- ----------------------------------------------------------------------------
+--  Functierechten: niets in public is aanroepbaar via de REST-API.
+--  Zonder dit kan iedereen met de anon-sleutel /rest/v1/rpc/fn_prune_trends
+--  aanroepen en daarmee data verwijderen. Triggers draaien als tabeleigenaar
+--  en blijven dus gewoon werken.
+-- ----------------------------------------------------------------------------
+revoke execute on function public.fn_prune_trends()            from anon, authenticated, public;
+revoke execute on function public.fn_trends_evaluate_alerts()  from anon, authenticated, public;
+revoke execute on function public.fn_trends_compute_velocity() from anon, authenticated, public;
+revoke execute on function public.fn_alerts_stamp_ack()        from anon, authenticated, public;
 
 -- ============================================================================
 --  OPTIONEEL: periodiek ophalen via pg_cron

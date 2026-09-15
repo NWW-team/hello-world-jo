@@ -60,6 +60,36 @@
     </div>
   </section>
 
+  <!-- ===================== Inloggen ===================== -->
+  <section id="auth" class="hidden min-h-screen items-center justify-center p-6">
+    <div class="w-full max-w-md rounded-2xl border border-slate-800 bg-slate-900 p-8 shadow-2xl">
+      <p class="text-xs font-semibold uppercase tracking-[0.2em] text-sky-400">Ministerie van Buitenlandse Zaken</p>
+      <h1 class="mt-1 text-2xl font-semibold text-white">Early Warning System</h1>
+      <p class="mt-3 text-sm leading-relaxed text-slate-400">
+        Toegang is beperkt tot uitgenodigde medewerkers. Vul je werkmailadres in; je ontvangt een
+        inloglink waarmee je direct bent aangemeld.
+      </p>
+
+      <form id="auth-form" class="mt-6 space-y-4">
+        <div>
+          <label for="auth-email" class="block text-sm font-medium text-slate-300">E-mailadres</label>
+          <input id="auth-email" type="email" required autocomplete="email" placeholder="jouw werkmailadres"
+                 class="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100 placeholder-slate-600 outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500">
+        </div>
+        <p id="auth-message" class="hidden rounded-lg border border-sky-900 bg-sky-950/60 px-3 py-2 text-sm text-sky-300"></p>
+        <button id="auth-submit" type="submit"
+                class="w-full rounded-lg bg-sky-500 px-4 py-2.5 text-sm font-semibold text-slate-950 transition hover:bg-sky-400 disabled:opacity-50">
+          Stuur inloglink
+        </button>
+      </form>
+
+      <button id="auth-settings-btn" type="button"
+              class="mt-4 w-full text-center text-xs text-slate-600 transition hover:text-slate-400">
+        Verbindingsinstellingen wijzigen
+      </button>
+    </div>
+  </section>
+
   <!-- ===================== Dashboard ===================== -->
   <div id="app" class="hidden">
 
@@ -85,7 +115,10 @@
           <p class="mt-1 text-sm text-slate-400">Signalering op basis van publieke Google Trends-data</p>
         </div>
         <div class="flex flex-wrap items-center gap-3">
-          <span id="last-updated" class="text-xs text-slate-500"></span>
+          <div class="text-right">
+            <p id="current-user" class="text-xs font-medium text-slate-300"></p>
+            <p id="last-updated" class="text-xs text-slate-500"></p>
+          </div>
           <button id="ingest-btn" type="button"
                   class="rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm font-medium text-slate-200 transition hover:bg-slate-700 disabled:opacity-50">
             Nu ophalen
@@ -97,6 +130,10 @@
           <button id="settings-btn" type="button" title="Verbinding wijzigen"
                   class="rounded-lg border border-slate-700 px-3 py-2 text-sm text-slate-400 transition hover:text-slate-200">
             Instellingen
+          </button>
+          <button id="signout-btn" type="button"
+                  class="rounded-lg border border-slate-700 px-3 py-2 text-sm text-slate-400 transition hover:text-slate-200">
+            Uitloggen
           </button>
         </div>
       </div>
@@ -261,14 +298,27 @@
     }
   };
 
+  const showScreen = (name) => {
+    for (const [id, isSection] of [["setup", true], ["auth", true], ["app", false]]) {
+      const node = el(id);
+      const visible = id === name;
+      node.classList.toggle("hidden", !visible);
+      if (isSection) node.classList.toggle("flex", visible);
+    }
+  };
+
   const showSetup = (message) => {
-    el("app").classList.add("hidden");
-    const setup = el("setup");
-    setup.classList.remove("hidden");
-    setup.classList.add("flex");
+    showScreen("setup");
     const error = el("setup-error");
     error.textContent = message || "";
     error.classList.toggle("hidden", !message);
+  };
+
+  const showAuth = (message) => {
+    showScreen("auth");
+    const note = el("auth-message");
+    note.textContent = message || "";
+    note.classList.toggle("hidden", !message);
   };
 
   // ------------------------------------------------------------- data laden
@@ -373,10 +423,35 @@
           <p class="mt-2 font-medium text-white">${escapeHtml(alert.keyword)}</p>
           <p class="text-xs text-slate-400">${escapeHtml(alert.country_name)} · ${formatNumber(alert.search_volume)} zoekopdrachten</p>
           <p class="mt-1 text-xs leading-relaxed text-slate-500">${escapeHtml(alert.reason)}</p>
-          ${link ? `<a href="${escapeHtml(link)}" target="_blank" rel="noopener noreferrer"
-                       class="mt-2 inline-block text-xs font-medium text-sky-400 hover:text-sky-300">Nieuwsbron →</a>` : ""}
+          <div class="mt-2 flex items-center gap-4">
+            ${link ? `<a href="${escapeHtml(link)}" target="_blank" rel="noopener noreferrer"
+                         class="text-xs font-medium text-sky-400 hover:text-sky-300">Nieuwsbron →</a>` : ""}
+            <button type="button" data-ack="${escapeHtml(alert.id)}"
+                    class="text-xs font-medium text-slate-500 transition hover:text-slate-300">Afvinken</button>
+          </div>
         </article>`;
     }).join("");
+
+    for (const button of container.querySelectorAll("[data-ack]")) {
+      button.addEventListener("click", () => acknowledgeAlert(button.dataset.ack, button));
+    }
+  }
+
+  async function acknowledgeAlert(id, button) {
+    button.disabled = true;
+    button.textContent = "Bezig…";
+    const { error } = await client
+      .from("alerts")
+      .update({ acknowledged_at: new Date().toISOString() })
+      .eq("id", id);
+
+    if (error) {
+      showError(`Afvinken mislukt: ${error.message}`);
+      button.disabled = false;
+      button.textContent = "Afvinken";
+      return;
+    }
+    await refresh();
   }
 
   function renderTable() {
@@ -561,20 +636,64 @@
       .subscribe();
   }
 
-  // -------------------------------------------------------------------- init
-  async function start(config) {
-    client = window.supabase.createClient(config.url, config.anonKey, {
-      auth: { persistSession: false },
-    });
+  // ------------------------------------------------------------------- sessie
+  function stopDashboard() {
+    clearInterval(state.timer);
+    state.timer = null;
+    state.channel?.unsubscribe();
+    state.channel = null;
+    state.chart?.destroy();
+    state.chart = null;
+  }
 
-    el("setup").classList.add("hidden");
-    el("setup").classList.remove("flex");
-    el("app").classList.remove("hidden");
-
+  async function enterDashboard(session) {
+    el("current-user").textContent = session.user.email ?? "";
+    showScreen("app");
+    showError("");
     await refresh();
     subscribeRealtime();
     clearInterval(state.timer);
     state.timer = setInterval(() => refresh(), AUTO_REFRESH_MS);
+  }
+
+  async function sendMagicLink(email) {
+    const button = el("auth-submit");
+    button.disabled = true;
+    button.textContent = "Versturen…";
+
+    // Bewust altijd dezelfde melding: zo verraadt de pagina niet welke adressen bestaan.
+    await client.auth.signInWithOtp({
+      email,
+      options: { shouldCreateUser: false, emailRedirectTo: window.location.href.split("#")[0] },
+    }).catch(() => {});
+
+    showAuth("Is dit adres bekend, dan is er een inloglink verstuurd. Controleer je mailbox.");
+    button.disabled = false;
+    button.textContent = "Stuur inloglink";
+  }
+
+  // -------------------------------------------------------------------- init
+  async function start(config) {
+    client = window.supabase.createClient(config.url, config.anonKey, {
+      auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true },
+    });
+
+    client.auth.onAuthStateChange((event, session) => {
+      if (event === "SIGNED_IN" && session) {
+        history.replaceState(null, "", window.location.pathname + window.location.search);
+        enterDashboard(session).catch((error) => showError(error.message));
+      } else if (event === "SIGNED_OUT") {
+        stopDashboard();
+        showAuth("");
+      }
+    });
+
+    const { data } = await client.auth.getSession();
+    if (data.session) {
+      await enterDashboard(data.session);
+    } else {
+      showAuth("");
+    }
   }
 
   el("setup-form").addEventListener("submit", async (event) => {
@@ -592,12 +711,27 @@
     }
   });
 
+  el("auth-form").addEventListener("submit", (event) => {
+    event.preventDefault();
+    const email = el("auth-email").value.trim();
+    if (email) sendMagicLink(email);
+  });
+
+  el("signout-btn").addEventListener("click", async () => {
+    await client.auth.signOut();
+  });
+
+  el("auth-settings-btn").addEventListener("click", () => {
+    localStorage.removeItem(STORAGE_KEY);
+    stopDashboard();
+    showSetup("");
+  });
+
   el("refresh-btn").addEventListener("click", (event) => refresh(event.currentTarget));
   el("ingest-btn").addEventListener("click", triggerIngest);
   el("settings-btn").addEventListener("click", () => {
     localStorage.removeItem(STORAGE_KEY);
-    clearInterval(state.timer);
-    state.channel?.unsubscribe();
+    stopDashboard();
     showSetup("");
   });
   el("dismiss-banner").addEventListener("click", () => {
