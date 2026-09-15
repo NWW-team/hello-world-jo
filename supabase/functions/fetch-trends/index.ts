@@ -232,6 +232,25 @@ async function ensureCountry(supabase: SupabaseClient, geo: string): Promise<voi
   if (error) throw new Error(`Land ${geo} kon niet worden vastgelegd: ${error.message}`);
 }
 
+// De anon-sleutel is zelf een geldig JWT, dus een ingelogde gebruiker is vereist.
+// De service role blijft toegestaan: dat is de route die pg_cron gebruikt.
+async function callerIsAllowed(req: Request, supabaseUrl: string, serviceRoleKey: string): Promise<boolean> {
+  const token = req.headers.get("Authorization")?.replace(/^Bearer\s+/i, "").trim();
+  if (!token) return false;
+  if (token === serviceRoleKey) return true;
+
+  const anonKey = Deno.env.get("SUPABASE_ANON_KEY");
+  if (!anonKey) return false;
+
+  const scoped = createClient(supabaseUrl, anonKey, {
+    auth: { persistSession: false, autoRefreshToken: false },
+    global: { headers: { Authorization: `Bearer ${token}` } },
+  });
+
+  const { data, error } = await scoped.auth.getUser();
+  return !error && Boolean(data.user);
+}
+
 async function ingestCountry(supabase: SupabaseClient, geo: string): Promise<FeedResult> {
   const { xml, source } = await fetchFeed(geo);
   const items = extractItems(xml);
@@ -267,6 +286,10 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
   if (!supabaseUrl || !serviceRoleKey) {
     return jsonResponse({ error: "SUPABASE_URL of SUPABASE_SERVICE_ROLE_KEY ontbreekt" }, 500);
+  }
+
+  if (!await callerIsAllowed(req, supabaseUrl, serviceRoleKey)) {
+    return jsonResponse({ error: "Niet geautoriseerd" }, 401);
   }
 
   const supabase = createClient(supabaseUrl, serviceRoleKey, {
