@@ -58,12 +58,16 @@ create table if not exists public.trends (
   previous_volume bigint,
   volume_delta    bigint not null default 0,
   is_breakout     boolean not null default false,
+  keyword_nl      text,
   news_title      text,
+  news_title_nl   text,
   news_snippet    text,
   news_url        text,
   news_source     text,
   picture_url     text,
   trend_link      text,
+  is_relevant     boolean not null default false,
+  relevant_labels text[]  not null default '{}',
   pub_date        timestamptz not null,
   first_seen_at   timestamptz not null default now(),
   created_at      timestamptz not null default now(),
@@ -71,10 +75,27 @@ create table if not exists public.trends (
   constraint trends_unique_observation unique (country_code, keyword, pub_date)
 );
 
+-- Kolommen toevoegen aan een tabel die al bestond vóór deze wijziging
+-- (create table if not exists slaat de body over als de tabel al bestaat).
+alter table public.trends add column if not exists keyword_nl      text;
+alter table public.trends add column if not exists news_title_nl   text;
+alter table public.trends add column if not exists is_relevant     boolean not null default false;
+alter table public.trends add column if not exists relevant_labels text[]  not null default '{}';
+
+comment on column public.trends.keyword_nl is
+  'Automatische Nederlandse vertaling van keyword, ingevuld door de fetch-trends edge function.';
+comment on column public.trends.news_title_nl is
+  'Automatische Nederlandse vertaling van news_title, ingevuld door de fetch-trends edge function.';
+comment on column public.trends.is_relevant is
+  'True als keyword/news_title matcht met een enabled alert_rules-patroon, ongeacht min_volume.';
+comment on column public.trends.relevant_labels is
+  'Labels van alle alert_rules die matchen (bv. "Verkiezingen", "Onrust en protest"), voor filtering/sortering in het dashboard.';
+
 create index if not exists trends_country_pub_date_idx on public.trends (country_code, pub_date desc);
 create index if not exists trends_created_at_idx       on public.trends (created_at desc);
 create index if not exists trends_keyword_idx          on public.trends (keyword);
 create index if not exists trends_breakout_idx         on public.trends (is_breakout) where is_breakout;
+create index if not exists trends_relevant_idx         on public.trends (is_relevant) where is_relevant;
 
 -- ----------------------------------------------------------------------------
 --  Signaalwoorden-watchlist
@@ -184,6 +205,39 @@ create trigger trg_trends_velocity
   for each row execute function public.fn_trends_compute_velocity();
 
 -- ----------------------------------------------------------------------------
+--  Relevantie voor internationale zaken/politiek: matcht keyword + nieuwstitel
+--  tegen de bestaande alert_rules-watchlist, los van min_volume. Zo kan het
+--  dashboard filteren/sorteren op relevantie, ook onder de alert-drempel.
+-- ----------------------------------------------------------------------------
+create or replace function public.fn_trends_flag_relevance()
+returns trigger
+language plpgsql
+set search_path = public
+as $relevance$
+declare
+  matched text[];
+  haystack text;
+begin
+  haystack := new.keyword || ' ' || coalesce(new.news_title, '');
+
+  select coalesce(array_agg(r.label order by r.label), '{}')
+    into matched
+    from public.alert_rules r
+   where r.enabled
+     and haystack ~* r.pattern;
+
+  new.relevant_labels := matched;
+  new.is_relevant      := coalesce(array_length(matched, 1), 0) > 0;
+  return new;
+end;
+$relevance$;
+
+drop trigger if exists trg_trends_relevance on public.trends;
+create trigger trg_trends_relevance
+  before insert or update on public.trends
+  for each row execute function public.fn_trends_flag_relevance();
+
+-- ----------------------------------------------------------------------------
 --  Alert-generatie
 -- ----------------------------------------------------------------------------
 create or replace function public.fn_trends_evaluate_alerts()
@@ -265,9 +319,13 @@ create or replace view public.v_active_alerts as
   select a.*,
          c.name        as country_name,
          c.region      as country_region,
+         t.keyword_nl,
          t.news_title,
+         t.news_title_nl,
          t.news_url,
          t.is_breakout,
+         t.is_relevant,
+         t.relevant_labels,
          t.pub_date
     from public.alerts a
     join public.trends t             on t.id = a.trend_id
@@ -387,6 +445,7 @@ $prune$;
 revoke execute on function public.fn_prune_trends()            from anon, authenticated, public;
 revoke execute on function public.fn_trends_evaluate_alerts()  from anon, authenticated, public;
 revoke execute on function public.fn_trends_compute_velocity() from anon, authenticated, public;
+revoke execute on function public.fn_trends_flag_relevance()   from anon, authenticated, public;
 revoke execute on function public.fn_alerts_stamp_ack()        from anon, authenticated, public;
 
 -- ============================================================================

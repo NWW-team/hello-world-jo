@@ -180,6 +180,11 @@
           <option value="168" selected>Laatste 7 dagen</option>
           <option value="720">Laatste 30 dagen</option>
         </select>
+        <label class="flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-300">
+          <input id="filter-relevant" type="checkbox"
+                 class="h-4 w-4 rounded border-slate-600 bg-slate-900 text-sky-500 focus:ring-sky-500 focus:ring-offset-slate-950">
+          Alleen internationale relevantie
+        </label>
       </section>
 
       <section class="rounded-xl border border-slate-800 bg-slate-900 p-4">
@@ -215,6 +220,7 @@
                   <th class="px-4 py-3 font-medium">Keyword</th>
                   <th class="px-4 py-3 text-right font-medium">Volume</th>
                   <th class="px-4 py-3 font-medium">Signaal</th>
+                  <th class="px-4 py-3 font-medium">Categorie</th>
                   <th class="px-4 py-3 font-medium">Gedetecteerd</th>
                 </tr>
               </thead>
@@ -288,6 +294,27 @@
     return `hsl(${hash} 80% 62%)`;
   };
 
+  // Toont de Nederlandse vertaling als primaire tekst (met de brontekst er als
+  // klein onderschrift onder), of gewoon de brontekst als er geen vertaling is
+  // of die identiek is (bv. al Nederlandstalige trends).
+  const withTranslation = (original, translation) => {
+    const source = String(original ?? "").trim();
+    const nl = String(translation ?? "").trim();
+    return !nl || nl.toLowerCase() === source.toLowerCase()
+      ? { text: source, original: null }
+      : { text: nl, original: source };
+  };
+
+  const categoryBadges = (row) => {
+    const labels = row.relevant_labels ?? [];
+    if (!row.is_relevant || labels.length === 0) return `<span class="text-xs text-slate-600">—</span>`;
+    const shown = labels.slice(0, 2)
+      .map((label) => `<span class="mb-1 mr-1 inline-block rounded-full border border-emerald-500/30 bg-emerald-500/15 px-2 py-0.5 text-[11px] font-medium text-emerald-300">${escapeHtml(label)}</span>`)
+      .join("");
+    const rest = labels.length > 2 ? `<span class="text-[11px] text-slate-500">+${labels.length - 2}</span>` : "";
+    return shown + rest;
+  };
+
   const showError = (message) => {
     const bar = el("error-bar");
     bar.textContent = message;
@@ -353,10 +380,22 @@
   const filteredTrends = () => {
     const country = el("filter-country").value;
     const query = el("filter-query").value.trim().toLowerCase();
-    return state.trends.filter((row) => {
+    const onlyRelevant = el("filter-relevant").checked;
+
+    const rows = state.trends.filter((row) => {
       if (country !== "all" && row.country_code !== country) return false;
-      if (query && !String(row.keyword).toLowerCase().includes(query)) return false;
+      if (onlyRelevant && !row.is_relevant) return false;
+      if (query) {
+        const haystack = `${row.keyword} ${row.keyword_nl ?? ""}`.toLowerCase();
+        if (!haystack.includes(query)) return false;
+      }
       return true;
+    });
+
+    // Trends die relevant zijn voor internationale zaken/politiek komen bovenaan.
+    return rows.sort((a, b) => {
+      if (a.is_relevant !== b.is_relevant) return a.is_relevant ? -1 : 1;
+      return new Date(b.created_at) - new Date(a.created_at);
     });
   };
 
@@ -393,15 +432,17 @@
     const rows = filteredTrends();
     const criticalCount = state.alerts.filter((alert) => alert.severity === "critical").length;
     const breakouts = rows.filter((row) => row.is_breakout);
+    const relevantCount = rows.filter((row) => row.is_relevant).length;
     const peak = rows.reduce((best, row) => (row.search_volume > (best?.search_volume ?? -1) ? row : best), null);
 
     el("kpi-alerts").textContent = state.alerts.length;
     el("kpi-alerts-sub").textContent = criticalCount > 0 ? `${criticalCount} kritiek` : "geen kritieke signalen";
     el("kpi-trends").textContent = rows.length;
-    el("kpi-trends-sub").textContent = `${new Set(rows.map((row) => row.country_code)).size} landen`;
+    el("kpi-trends-sub").textContent =
+      `${new Set(rows.map((row) => row.country_code)).size} landen · ${relevantCount} relevant`;
     el("kpi-breakouts").textContent = breakouts.length;
     el("kpi-peak").textContent = peak ? formatNumber(peak.search_volume) : "—";
-    el("kpi-peak-sub").textContent = peak ? peak.keyword : " ";
+    el("kpi-peak-sub").textContent = peak ? (peak.keyword_nl || peak.keyword) : " ";
   }
 
   function renderAlerts() {
@@ -419,6 +460,7 @@
     container.innerHTML = sorted.map((alert) => {
       const style = SEVERITY_STYLE[alert.severity] ?? SEVERITY_STYLE.low;
       const link = safeUrl(alert.news_url);
+      const keyword = withTranslation(alert.keyword, alert.keyword_nl);
       return `
         <article class="px-4 py-3">
           <div class="flex items-center justify-between gap-2">
@@ -427,7 +469,8 @@
             </span>
             <span class="text-xs text-slate-500">${escapeHtml(timeAgo(alert.created_at))}</span>
           </div>
-          <p class="mt-2 font-medium text-white">${escapeHtml(alert.keyword)}</p>
+          <p class="mt-2 font-medium text-white">${escapeHtml(keyword.text)}</p>
+          ${keyword.original ? `<p class="text-xs text-slate-600" title="Brontekst">${escapeHtml(keyword.original)}</p>` : ""}
           <p class="text-xs text-slate-400">${escapeHtml(alert.country_name)} · ${formatNumber(alert.search_volume)} zoekopdrachten</p>
           <p class="mt-1 text-xs leading-relaxed text-slate-500">${escapeHtml(alert.reason)}</p>
           <div class="mt-2 flex items-center gap-4">
@@ -466,7 +509,7 @@
     const body = el("trends-body");
 
     if (rows.length === 0) {
-      body.innerHTML = `<tr><td colspan="5" class="px-4 py-10 text-center text-sm text-slate-500">Geen trends gevonden.</td></tr>`;
+      body.innerHTML = `<tr><td colspan="6" class="px-4 py-10 text-center text-sm text-slate-500">Geen trends gevonden.</td></tr>`;
       return;
     }
 
@@ -476,15 +519,18 @@
       const deltaChip = delta > 0
         ? `<span class="text-emerald-400">+${formatNumber(delta)}</span>`
         : delta < 0 ? `<span class="text-slate-500">${formatNumber(delta)}</span>` : "";
+      const keyword = withTranslation(row.keyword, row.keyword_nl);
+      const title = withTranslation(row.news_title, row.news_title_nl);
 
       return `
         <tr class="transition hover:bg-slate-800/40">
           <td class="whitespace-nowrap px-4 py-3 text-slate-400">${escapeHtml(row.country_name)}</td>
           <td class="px-4 py-3">
-            <p class="font-medium text-white">${escapeHtml(row.keyword)}</p>
+            <p class="font-medium text-white">${escapeHtml(keyword.text)}</p>
+            ${keyword.original ? `<p class="text-xs text-slate-600" title="Brontekst">${escapeHtml(keyword.original)}</p>` : ""}
             ${link ? `<a href="${escapeHtml(link)}" target="_blank" rel="noopener noreferrer"
-                         class="text-xs text-sky-400 hover:text-sky-300">${escapeHtml(row.news_title || "Nieuwsbron")}</a>`
-                   : `<span class="text-xs text-slate-600">${escapeHtml(row.news_title || "")}</span>`}
+                         class="text-xs text-sky-400 hover:text-sky-300">${escapeHtml(title.text || "Nieuwsbron")}</a>`
+                   : `<span class="text-xs text-slate-600">${escapeHtml(title.text || "")}</span>`}
           </td>
           <td class="whitespace-nowrap px-4 py-3 text-right">
             <span class="font-semibold text-white">${formatNumber(row.search_volume)}</span>
@@ -495,6 +541,7 @@
               ? `<span class="rounded-full border border-rose-500/30 bg-rose-500/15 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-rose-300">Breakout</span>`
               : `<span class="text-xs text-slate-600">stabiel</span>`}
           </td>
+          <td class="px-4 py-3">${categoryBadges(row)}</td>
           <td class="whitespace-nowrap px-4 py-3 text-slate-400">${escapeHtml(timeAgo(row.created_at))}</td>
         </tr>`;
     }).join("");
@@ -519,25 +566,33 @@
 
     const byKeyword = new Map();
     for (const row of rows) {
-      if (!byKeyword.has(row.keyword)) byKeyword.set(row.keyword, []);
-      byKeyword.get(row.keyword).push({ x: new Date(row.created_at), y: Number(row.search_volume) || 0 });
+      if (!byKeyword.has(row.keyword)) byKeyword.set(row.keyword, { label: null, relevant: false, points: [] });
+      const group = byKeyword.get(row.keyword);
+      if (row.is_relevant) group.relevant = true;
+      if (!group.label && row.keyword_nl) group.label = row.keyword_nl;
+      group.points.push({ x: new Date(row.created_at), y: Number(row.search_volume) || 0 });
     }
 
+    // Trends relevant voor internationale zaken komen als eerste in aanmerking
+    // voor een van de MAX_CHART_SERIES plekken in de grafiek, ook als hun
+    // volume lager is dan een niet-relevante trend.
     const series = [...byKeyword.entries()]
-      .map(([keyword, points]) => ({
+      .map(([keyword, group]) => ({
         keyword,
-        points: points.sort((a, b) => a.x - b.x),
-        peak: Math.max(...points.map((point) => point.y)),
+        label: group.label || keyword,
+        relevant: group.relevant,
+        points: group.points.sort((a, b) => a.x - b.x),
+        peak: Math.max(...group.points.map((point) => point.y)),
       }))
-      .sort((a, b) => b.peak - a.peak)
+      .sort((a, b) => (b.relevant - a.relevant) || (b.peak - a.peak))
       .slice(0, MAX_CHART_SERIES);
 
     el("chart-note").textContent = byKeyword.size > series.length
       ? `Top ${series.length} van ${byKeyword.size} keywords`
       : `${series.length} keyword${series.length === 1 ? "" : "s"}`;
 
-    const datasets = series.map(({ keyword, points }) => ({
-      label: keyword,
+    const datasets = series.map(({ keyword, label, points }) => ({
+      label,
       data: points,
       borderColor: colorFor(keyword),
       backgroundColor: colorFor(keyword),
@@ -749,6 +804,7 @@
   el("filter-query").addEventListener("input", render);
   el("filter-country").addEventListener("change", render);
   el("filter-window").addEventListener("change", () => refresh());
+  el("filter-relevant").addEventListener("change", render);
 
   if (USING_BUILT_IN_CONFIG) {
     el("settings-btn").remove();
