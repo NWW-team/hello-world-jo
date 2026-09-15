@@ -1,133 +1,621 @@
 <!DOCTYPE html>
-<html lang="nl">
+<html lang="nl" class="dark">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Hello, Vibecoding!</title>
+  <title>Early Warning System — Google Trends</title>
+
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
   <style>
-    :root {
-      --bg: #0f172a;
-      --bg-card: #1e293b;
-      --accent: #38bdf8;
-      --accent-2: #a78bfa;
-      --text: #e2e8f0;
-      --text-dim: #94a3b8;
+    body { font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    @keyframes pulse-alert {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(244, 63, 94, 0.45); }
+      50%      { box-shadow: 0 0 0 10px rgba(244, 63, 94, 0); }
     }
-
-    * {
-      box-sizing: border-box;
-    }
-
-    body {
-      margin: 0;
-      min-height: 100vh;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      background: radial-gradient(circle at top, #1e293b, var(--bg));
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      color: var(--text);
-      padding: 24px;
-    }
-
-    .card {
-      background: var(--bg-card);
-      border-radius: 16px;
-      padding: 48px 40px;
-      max-width: 480px;
-      width: 100%;
-      text-align: center;
-      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.4);
-      border: 1px solid rgba(148, 163, 184, 0.15);
-    }
-
-    .badge {
-      display: inline-block;
-      font-size: 13px;
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
-      color: var(--accent);
-      background: rgba(56, 189, 248, 0.1);
-      padding: 6px 14px;
-      border-radius: 999px;
-      margin-bottom: 20px;
-    }
-
-    h1 {
-      font-size: 2.2rem;
-      margin: 0 0 12px;
-      background: linear-gradient(90deg, var(--accent), var(--accent-2));
-      -webkit-background-clip: text;
-      background-clip: text;
-      color: transparent;
-    }
-
-    p {
-      color: var(--text-dim);
-      line-height: 1.6;
-      margin: 0 0 28px;
-    }
-
-    button {
-      background: linear-gradient(90deg, var(--accent), var(--accent-2));
-      color: #0f172a;
-      font-weight: 600;
-      font-size: 15px;
-      border: none;
-      border-radius: 10px;
-      padding: 12px 24px;
-      cursor: pointer;
-      transition: transform 0.15s ease, box-shadow 0.15s ease;
-    }
-
-    button:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 10px 20px rgba(56, 189, 248, 0.25);
-    }
-
-    #output {
-      margin-top: 20px;
-      font-size: 14px;
-      color: var(--accent);
-      min-height: 20px;
-    }
-
-    footer {
-      margin-top: 32px;
-      font-size: 12px;
-      color: #475569;
-    }
+    .alert-pulse { animation: pulse-alert 2s ease-out infinite; }
+    ::-webkit-scrollbar { width: 10px; height: 10px; }
+    ::-webkit-scrollbar-track { background: #0f172a; }
+    ::-webkit-scrollbar-thumb { background: #334155; border-radius: 9999px; }
+    ::-webkit-scrollbar-thumb:hover { background: #475569; }
   </style>
 </head>
-<body>
-  <main class="card">
-    <span class="badge">Vibecoding demo</span>
-    <h1>Hello, World! 👋</h1>
-    <p>
-      Dit is een piepklein voorbeeldproject om te laten zien hoe je met
-      "vibecoden" — samen met een AI in een lopend gesprek bouwen — snel
-      van niets naar iets werkends gaat.
-    </p>
-    <button id="greetBtn">Zeg hallo</button>
-    <div id="output"></div>
-    <footer>Gebouwd met HTML, CSS &amp; een beetje JavaScript.</footer>
-  </main>
 
-  <script>
-    const button = document.getElementById("greetBtn");
-    const output = document.getElementById("output");
-    const messages = [
-      "Hallo daar! 🎉",
-      "Vibecoden werkt! ✨",
-      "Nog een keer? 😄",
-      "Je bent hier goed bezig! 🚀"
-    ];
-    let i = 0;
+<body class="bg-slate-950 text-slate-200 antialiased">
 
-    button.addEventListener("click", () => {
-      output.textContent = messages[i % messages.length];
-      i++;
+  <!-- ===================== Setup ===================== -->
+  <section id="setup" class="hidden min-h-screen items-center justify-center p-6">
+    <div class="w-full max-w-lg rounded-2xl border border-slate-800 bg-slate-900 p-8 shadow-2xl">
+      <h1 class="text-2xl font-semibold text-white">Verbinding met Supabase</h1>
+      <p class="mt-2 text-sm leading-relaxed text-slate-400">
+        Vul de projectgegevens in uit <span class="text-slate-300">Supabase Dashboard → Project Settings → API</span>.
+        Gebruik uitsluitend de publieke <span class="font-medium text-sky-400">anon</span>-sleutel; deze wordt lokaal
+        in je browser bewaard.
+      </p>
+
+      <form id="setup-form" class="mt-6 space-y-4">
+        <div>
+          <label for="setup-url" class="block text-sm font-medium text-slate-300">Project URL</label>
+          <input id="setup-url" type="url" required placeholder="https://xxxxxxxx.supabase.co"
+                 class="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100 placeholder-slate-600 outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500">
+        </div>
+        <div>
+          <label for="setup-key" class="block text-sm font-medium text-slate-300">Anon public key</label>
+          <input id="setup-key" type="password" required placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6..."
+                 class="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100 placeholder-slate-600 outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500">
+        </div>
+        <p id="setup-error" class="hidden rounded-lg border border-rose-900 bg-rose-950/60 px-3 py-2 text-sm text-rose-300"></p>
+        <button type="submit"
+                class="w-full rounded-lg bg-sky-500 px-4 py-2.5 text-sm font-semibold text-slate-950 transition hover:bg-sky-400">
+          Verbinden
+        </button>
+      </form>
+    </div>
+  </section>
+
+  <!-- ===================== Dashboard ===================== -->
+  <div id="app" class="hidden">
+
+    <div id="critical-banner" class="hidden sticky top-0 z-50 border-b border-rose-500 bg-rose-600">
+      <div class="mx-auto flex max-w-7xl items-center gap-4 px-4 py-3 sm:px-6">
+        <span class="alert-pulse flex h-3 w-3 shrink-0 rounded-full bg-white"></span>
+        <div class="min-w-0 flex-1">
+          <p class="text-sm font-bold uppercase tracking-wider text-white">Critical Geopolitical Alert</p>
+          <p id="critical-banner-text" class="truncate text-sm text-rose-100"></p>
+        </div>
+        <button id="dismiss-banner" type="button"
+                class="shrink-0 rounded-md border border-rose-300/40 px-3 py-1 text-xs font-medium text-white transition hover:bg-rose-500">
+          Verbergen
+        </button>
+      </div>
+    </div>
+
+    <header class="border-b border-slate-800 bg-slate-900/60 backdrop-blur">
+      <div class="mx-auto flex max-w-7xl flex-col gap-4 px-4 py-5 sm:px-6 lg:flex-row lg:items-center lg:justify-between">
+        <div>
+          <p class="text-xs font-semibold uppercase tracking-[0.2em] text-sky-400">Ministerie van Buitenlandse Zaken</p>
+          <h1 class="mt-1 text-xl font-semibold text-white sm:text-2xl">Early Warning System</h1>
+          <p class="mt-1 text-sm text-slate-400">Signalering op basis van publieke Google Trends-data</p>
+        </div>
+        <div class="flex flex-wrap items-center gap-3">
+          <span id="last-updated" class="text-xs text-slate-500"></span>
+          <button id="ingest-btn" type="button"
+                  class="rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm font-medium text-slate-200 transition hover:bg-slate-700 disabled:opacity-50">
+            Nu ophalen
+          </button>
+          <button id="refresh-btn" type="button"
+                  class="rounded-lg bg-sky-500 px-3 py-2 text-sm font-semibold text-slate-950 transition hover:bg-sky-400 disabled:opacity-50">
+            Vernieuwen
+          </button>
+          <button id="settings-btn" type="button" title="Verbinding wijzigen"
+                  class="rounded-lg border border-slate-700 px-3 py-2 text-sm text-slate-400 transition hover:text-slate-200">
+            Instellingen
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <main class="mx-auto max-w-7xl space-y-6 px-4 py-6 sm:px-6">
+
+      <p id="error-bar" class="hidden rounded-xl border border-rose-900 bg-rose-950/60 px-4 py-3 text-sm text-rose-300"></p>
+
+      <section class="grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <div class="rounded-xl border border-slate-800 bg-slate-900 p-4">
+          <p class="text-xs font-medium uppercase tracking-wider text-slate-500">Actieve alerts</p>
+          <p id="kpi-alerts" class="mt-2 text-3xl font-semibold text-white">—</p>
+          <p id="kpi-alerts-sub" class="mt-1 text-xs text-slate-500">&nbsp;</p>
+        </div>
+        <div class="rounded-xl border border-slate-800 bg-slate-900 p-4">
+          <p class="text-xs font-medium uppercase tracking-wider text-slate-500">Trends in venster</p>
+          <p id="kpi-trends" class="mt-2 text-3xl font-semibold text-white">—</p>
+          <p id="kpi-trends-sub" class="mt-1 text-xs text-slate-500">&nbsp;</p>
+        </div>
+        <div class="rounded-xl border border-slate-800 bg-slate-900 p-4">
+          <p class="text-xs font-medium uppercase tracking-wider text-slate-500">Breakouts</p>
+          <p id="kpi-breakouts" class="mt-2 text-3xl font-semibold text-white">—</p>
+          <p class="mt-1 text-xs text-slate-500">Volume minimaal verdubbeld</p>
+        </div>
+        <div class="rounded-xl border border-slate-800 bg-slate-900 p-4">
+          <p class="text-xs font-medium uppercase tracking-wider text-slate-500">Hoogste volume</p>
+          <p id="kpi-peak" class="mt-2 text-3xl font-semibold text-white">—</p>
+          <p id="kpi-peak-sub" class="mt-1 truncate text-xs text-slate-500">&nbsp;</p>
+        </div>
+      </section>
+
+      <section class="flex flex-col gap-3 rounded-xl border border-slate-800 bg-slate-900 p-4 sm:flex-row sm:items-center">
+        <input id="filter-query" type="search" placeholder="Zoek op keyword…"
+               class="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100 placeholder-slate-600 outline-none focus:border-sky-500 sm:max-w-xs">
+        <select id="filter-country"
+                class="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100 outline-none focus:border-sky-500 sm:w-auto">
+          <option value="all">Alle landen</option>
+        </select>
+        <select id="filter-window"
+                class="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100 outline-none focus:border-sky-500 sm:w-auto">
+          <option value="24">Laatste 24 uur</option>
+          <option value="72">Laatste 3 dagen</option>
+          <option value="168" selected>Laatste 7 dagen</option>
+          <option value="720">Laatste 30 dagen</option>
+        </select>
+      </section>
+
+      <section class="rounded-xl border border-slate-800 bg-slate-900 p-4">
+        <div class="mb-4 flex items-baseline justify-between gap-4">
+          <h2 class="text-sm font-semibold text-white">Zoekvolume over tijd</h2>
+          <p id="chart-note" class="text-xs text-slate-500"></p>
+        </div>
+        <div class="relative h-72 sm:h-96">
+          <canvas id="trend-chart"></canvas>
+        </div>
+        <p id="chart-empty" class="hidden py-12 text-center text-sm text-slate-500">
+          Nog geen trenddata in dit venster.
+        </p>
+      </section>
+
+      <section class="grid gap-6 lg:grid-cols-3">
+        <div class="rounded-xl border border-slate-800 bg-slate-900 lg:col-span-1">
+          <div class="border-b border-slate-800 px-4 py-3">
+            <h2 class="text-sm font-semibold text-white">Openstaande alerts</h2>
+          </div>
+          <div id="alerts-list" class="max-h-[32rem] divide-y divide-slate-800 overflow-y-auto"></div>
+        </div>
+
+        <div class="overflow-hidden rounded-xl border border-slate-800 bg-slate-900 lg:col-span-2">
+          <div class="border-b border-slate-800 px-4 py-3">
+            <h2 class="text-sm font-semibold text-white">Gedetecteerde trends</h2>
+          </div>
+          <div class="max-h-[32rem] overflow-auto">
+            <table class="w-full text-left text-sm">
+              <thead class="sticky top-0 bg-slate-900 text-xs uppercase tracking-wider text-slate-500">
+                <tr>
+                  <th class="px-4 py-3 font-medium">Land</th>
+                  <th class="px-4 py-3 font-medium">Keyword</th>
+                  <th class="px-4 py-3 text-right font-medium">Volume</th>
+                  <th class="px-4 py-3 font-medium">Signaal</th>
+                  <th class="px-4 py-3 font-medium">Gedetecteerd</th>
+                </tr>
+              </thead>
+              <tbody id="trends-body" class="divide-y divide-slate-800"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <footer class="pb-8 pt-2 text-center text-xs text-slate-600">
+        Bron: publieke Google Trends RSS-feeds · Data via Supabase Edge Function <code>fetch-trends</code>
+      </footer>
+    </main>
+  </div>
+
+<script>
+(() => {
+  "use strict";
+
+  // Vul deze in om het instelscherm over te slaan bij een vaste deployment.
+  const BUILT_IN_CONFIG = { url: "", anonKey: "" };
+
+  const STORAGE_KEY = "bz-ews-config";
+  const BANNER_DISMISS_KEY = "bz-ews-banner-dismissed";
+  const AUTO_REFRESH_MS = 60_000;
+  const MAX_CHART_SERIES = 8;
+
+  const SEVERITY_STYLE = {
+    critical: { chip: "bg-rose-500/15 text-rose-300 border-rose-500/30", label: "Kritiek", rank: 4 },
+    high:     { chip: "bg-amber-500/15 text-amber-300 border-amber-500/30", label: "Hoog", rank: 3 },
+    medium:   { chip: "bg-sky-500/15 text-sky-300 border-sky-500/30", label: "Midden", rank: 2 },
+    low:      { chip: "bg-slate-500/15 text-slate-300 border-slate-500/30", label: "Laag", rank: 1 },
+  };
+
+  const el = (id) => document.getElementById(id);
+  const state = { trends: [], alerts: [], countries: [], chart: null, channel: null, timer: null };
+  let client = null;
+
+  // ---------------------------------------------------------------- helpers
+  const escapeHtml = (value) => String(value ?? "").replace(/[&<>"']/g, (char) => (
+    { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[char]
+  ));
+
+  const safeUrl = (value) => (/^https?:\/\//i.test(value ?? "") ? value : null);
+
+  const formatNumber = (value) => {
+    const number = Number(value) || 0;
+    if (number >= 1_000_000) return `${(number / 1_000_000).toFixed(1).replace(/\.0$/, "")}M`;
+    if (number >= 1_000) return `${(number / 1_000).toFixed(number >= 10_000 ? 0 : 1).replace(/\.0$/, "")}K`;
+    return String(number);
+  };
+
+  const timeAgo = (iso) => {
+    const seconds = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000);
+    if (seconds < 60) return "zojuist";
+    if (seconds < 3600) return `${Math.floor(seconds / 60)} min geleden`;
+    if (seconds < 86_400) return `${Math.floor(seconds / 3600)} uur geleden`;
+    return `${Math.floor(seconds / 86_400)} dgn geleden`;
+  };
+
+  const colorFor = (keyword) => {
+    let hash = 0;
+    for (let i = 0; i < keyword.length; i += 1) hash = (hash * 31 + keyword.charCodeAt(i)) % 360;
+    return `hsl(${hash} 80% 62%)`;
+  };
+
+  const showError = (message) => {
+    const bar = el("error-bar");
+    bar.textContent = message;
+    bar.classList.toggle("hidden", !message);
+  };
+
+  // ----------------------------------------------------------- configuratie
+  const loadConfig = () => {
+    if (BUILT_IN_CONFIG.url && BUILT_IN_CONFIG.anonKey) return BUILT_IN_CONFIG;
+    try {
+      const stored = JSON.parse(localStorage.getItem(STORAGE_KEY) || "null");
+      return stored?.url && stored?.anonKey ? stored : null;
+    } catch {
+      return null;
+    }
+  };
+
+  const showSetup = (message) => {
+    el("app").classList.add("hidden");
+    const setup = el("setup");
+    setup.classList.remove("hidden");
+    setup.classList.add("flex");
+    const error = el("setup-error");
+    error.textContent = message || "";
+    error.classList.toggle("hidden", !message);
+  };
+
+  // ------------------------------------------------------------- data laden
+  const selectedWindowHours = () => Number(el("filter-window").value) || 168;
+
+  async function loadData() {
+    const since = new Date(Date.now() - selectedWindowHours() * 3_600_000).toISOString();
+
+    const [trends, alerts, countries] = await Promise.all([
+      client.from("v_trends_enriched").select("*").gte("created_at", since)
+        .order("created_at", { ascending: false }).limit(1000),
+      client.from("v_active_alerts").select("*").gte("created_at", since)
+        .order("created_at", { ascending: false }).limit(200),
+      client.from("monitored_countries").select("code, name").order("name"),
+    ]);
+
+    const failure = [trends, alerts, countries].find((result) => result.error);
+    if (failure) throw new Error(failure.error.message);
+
+    state.trends = trends.data ?? [];
+    state.alerts = alerts.data ?? [];
+    state.countries = countries.data ?? [];
+  }
+
+  const filteredTrends = () => {
+    const country = el("filter-country").value;
+    const query = el("filter-query").value.trim().toLowerCase();
+    return state.trends.filter((row) => {
+      if (country !== "all" && row.country_code !== country) return false;
+      if (query && !String(row.keyword).toLowerCase().includes(query)) return false;
+      return true;
     });
-  </script>
+  };
+
+  // ---------------------------------------------------------------- rendering
+  function renderCountryFilter() {
+    const select = el("filter-country");
+    const current = select.value;
+    const options = state.countries
+      .map((row) => `<option value="${escapeHtml(row.code)}">${escapeHtml(row.name)}</option>`)
+      .join("");
+    select.innerHTML = `<option value="all">Alle landen</option>${options}`;
+    if ([...select.options].some((option) => option.value === current)) select.value = current;
+  }
+
+  function renderBanner() {
+    const banner = el("critical-banner");
+    const critical = state.alerts
+      .filter((alert) => alert.severity === "critical")
+      .sort((a, b) => b.search_volume - a.search_volume);
+
+    if (critical.length === 0 || sessionStorage.getItem(BANNER_DISMISS_KEY) === "1") {
+      banner.classList.add("hidden");
+      return;
+    }
+
+    const top = critical[0];
+    const extra = critical.length > 1 ? ` · +${critical.length - 1} andere kritieke signalen` : "";
+    el("critical-banner-text").textContent =
+      `${top.country_name}: "${top.keyword}" — ${top.reason}${extra}`;
+    banner.classList.remove("hidden");
+  }
+
+  function renderKpis() {
+    const rows = filteredTrends();
+    const criticalCount = state.alerts.filter((alert) => alert.severity === "critical").length;
+    const breakouts = rows.filter((row) => row.is_breakout);
+    const peak = rows.reduce((best, row) => (row.search_volume > (best?.search_volume ?? -1) ? row : best), null);
+
+    el("kpi-alerts").textContent = state.alerts.length;
+    el("kpi-alerts-sub").textContent = criticalCount > 0 ? `${criticalCount} kritiek` : "geen kritieke signalen";
+    el("kpi-trends").textContent = rows.length;
+    el("kpi-trends-sub").textContent = `${new Set(rows.map((row) => row.country_code)).size} landen`;
+    el("kpi-breakouts").textContent = breakouts.length;
+    el("kpi-peak").textContent = peak ? formatNumber(peak.search_volume) : "—";
+    el("kpi-peak-sub").textContent = peak ? peak.keyword : " ";
+  }
+
+  function renderAlerts() {
+    const container = el("alerts-list");
+    if (state.alerts.length === 0) {
+      container.innerHTML = `<p class="px-4 py-10 text-center text-sm text-slate-500">Geen openstaande alerts.</p>`;
+      return;
+    }
+
+    const sorted = [...state.alerts].sort((a, b) => {
+      const rank = (SEVERITY_STYLE[b.severity]?.rank ?? 0) - (SEVERITY_STYLE[a.severity]?.rank ?? 0);
+      return rank !== 0 ? rank : new Date(b.created_at) - new Date(a.created_at);
+    });
+
+    container.innerHTML = sorted.map((alert) => {
+      const style = SEVERITY_STYLE[alert.severity] ?? SEVERITY_STYLE.low;
+      const link = safeUrl(alert.news_url);
+      return `
+        <article class="px-4 py-3">
+          <div class="flex items-center justify-between gap-2">
+            <span class="rounded-full border px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide ${style.chip}">
+              ${style.label}
+            </span>
+            <span class="text-xs text-slate-500">${escapeHtml(timeAgo(alert.created_at))}</span>
+          </div>
+          <p class="mt-2 font-medium text-white">${escapeHtml(alert.keyword)}</p>
+          <p class="text-xs text-slate-400">${escapeHtml(alert.country_name)} · ${formatNumber(alert.search_volume)} zoekopdrachten</p>
+          <p class="mt-1 text-xs leading-relaxed text-slate-500">${escapeHtml(alert.reason)}</p>
+          ${link ? `<a href="${escapeHtml(link)}" target="_blank" rel="noopener noreferrer"
+                       class="mt-2 inline-block text-xs font-medium text-sky-400 hover:text-sky-300">Nieuwsbron →</a>` : ""}
+        </article>`;
+    }).join("");
+  }
+
+  function renderTable() {
+    const rows = filteredTrends();
+    const body = el("trends-body");
+
+    if (rows.length === 0) {
+      body.innerHTML = `<tr><td colspan="5" class="px-4 py-10 text-center text-sm text-slate-500">Geen trends gevonden.</td></tr>`;
+      return;
+    }
+
+    body.innerHTML = rows.map((row) => {
+      const link = safeUrl(row.news_url);
+      const delta = Number(row.volume_delta) || 0;
+      const deltaChip = delta > 0
+        ? `<span class="text-emerald-400">+${formatNumber(delta)}</span>`
+        : delta < 0 ? `<span class="text-slate-500">${formatNumber(delta)}</span>` : "";
+
+      return `
+        <tr class="transition hover:bg-slate-800/40">
+          <td class="whitespace-nowrap px-4 py-3 text-slate-400">${escapeHtml(row.country_name)}</td>
+          <td class="px-4 py-3">
+            <p class="font-medium text-white">${escapeHtml(row.keyword)}</p>
+            ${link ? `<a href="${escapeHtml(link)}" target="_blank" rel="noopener noreferrer"
+                         class="text-xs text-sky-400 hover:text-sky-300">${escapeHtml(row.news_title || "Nieuwsbron")}</a>`
+                   : `<span class="text-xs text-slate-600">${escapeHtml(row.news_title || "")}</span>`}
+          </td>
+          <td class="whitespace-nowrap px-4 py-3 text-right">
+            <span class="font-semibold text-white">${formatNumber(row.search_volume)}</span>
+            <span class="ml-2 text-xs">${deltaChip}</span>
+          </td>
+          <td class="whitespace-nowrap px-4 py-3">
+            ${row.is_breakout
+              ? `<span class="rounded-full border border-rose-500/30 bg-rose-500/15 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-rose-300">Breakout</span>`
+              : `<span class="text-xs text-slate-600">stabiel</span>`}
+          </td>
+          <td class="whitespace-nowrap px-4 py-3 text-slate-400">${escapeHtml(timeAgo(row.created_at))}</td>
+        </tr>`;
+    }).join("");
+  }
+
+  function renderChart() {
+    const rows = filteredTrends();
+    const canvas = el("trend-chart");
+    const empty = el("chart-empty");
+
+    if (rows.length === 0) {
+      state.chart?.destroy();
+      state.chart = null;
+      canvas.classList.add("hidden");
+      empty.classList.remove("hidden");
+      el("chart-note").textContent = "";
+      return;
+    }
+
+    canvas.classList.remove("hidden");
+    empty.classList.add("hidden");
+
+    const byKeyword = new Map();
+    for (const row of rows) {
+      if (!byKeyword.has(row.keyword)) byKeyword.set(row.keyword, []);
+      byKeyword.get(row.keyword).push({ x: new Date(row.created_at), y: Number(row.search_volume) || 0 });
+    }
+
+    const series = [...byKeyword.entries()]
+      .map(([keyword, points]) => ({
+        keyword,
+        points: points.sort((a, b) => a.x - b.x),
+        peak: Math.max(...points.map((point) => point.y)),
+      }))
+      .sort((a, b) => b.peak - a.peak)
+      .slice(0, MAX_CHART_SERIES);
+
+    el("chart-note").textContent = byKeyword.size > series.length
+      ? `Top ${series.length} van ${byKeyword.size} keywords`
+      : `${series.length} keyword${series.length === 1 ? "" : "s"}`;
+
+    const datasets = series.map(({ keyword, points }) => ({
+      label: keyword,
+      data: points,
+      borderColor: colorFor(keyword),
+      backgroundColor: colorFor(keyword),
+      borderWidth: 2,
+      pointRadius: 3,
+      pointHoverRadius: 5,
+      tension: 0.3,
+      spanGaps: true,
+    }));
+
+    if (state.chart) {
+      state.chart.data.datasets = datasets;
+      state.chart.update();
+      return;
+    }
+
+    state.chart = new Chart(canvas, {
+      type: "line",
+      data: { datasets },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: { mode: "nearest", intersect: false },
+        plugins: {
+          legend: { labels: { color: "#cbd5e1", boxWidth: 12, usePointStyle: true, pointStyle: "circle" } },
+          tooltip: {
+            backgroundColor: "#0f172a",
+            borderColor: "#334155",
+            borderWidth: 1,
+            titleColor: "#f8fafc",
+            bodyColor: "#cbd5e1",
+            callbacks: {
+              label: (context) => `${context.dataset.label}: ${formatNumber(context.parsed.y)}`,
+            },
+          },
+        },
+        scales: {
+          x: {
+            type: "time",
+            time: { tooltipFormat: "dd MMM HH:mm", displayFormats: { hour: "dd MMM HH:mm", day: "dd MMM" } },
+            grid: { color: "rgba(51, 65, 85, 0.4)" },
+            ticks: { color: "#94a3b8", maxRotation: 0, autoSkipPadding: 20 },
+          },
+          y: {
+            beginAtZero: true,
+            grid: { color: "rgba(51, 65, 85, 0.4)" },
+            ticks: { color: "#94a3b8", callback: (value) => formatNumber(value) },
+          },
+        },
+      },
+    });
+  }
+
+  function render() {
+    renderCountryFilter();
+    renderBanner();
+    renderKpis();
+    renderAlerts();
+    renderTable();
+    renderChart();
+    el("last-updated").textContent = `Bijgewerkt ${new Date().toLocaleTimeString("nl-NL", { hour: "2-digit", minute: "2-digit" })}`;
+  }
+
+  // ------------------------------------------------------------------ acties
+  async function refresh(button) {
+    if (button) button.disabled = true;
+    try {
+      await loadData();
+      showError("");
+      render();
+    } catch (error) {
+      showError(`Laden mislukt: ${error.message}`);
+    } finally {
+      if (button) button.disabled = false;
+    }
+  }
+
+  async function triggerIngest() {
+    const button = el("ingest-btn");
+    button.disabled = true;
+    button.textContent = "Bezig…";
+    try {
+      const { error } = await client.functions.invoke("fetch-trends", { body: {} });
+      if (error) throw error;
+      await refresh();
+    } catch (error) {
+      showError(`Ophalen mislukt: ${error.message}`);
+    } finally {
+      button.disabled = false;
+      button.textContent = "Nu ophalen";
+    }
+  }
+
+  function subscribeRealtime() {
+    state.channel?.unsubscribe();
+    state.channel = client
+      .channel("ews-live")
+      .on("postgres_changes", { event: "*", schema: "public", table: "trends" }, () => refresh())
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "alerts" }, () => {
+        sessionStorage.removeItem(BANNER_DISMISS_KEY);
+        refresh();
+      })
+      .subscribe();
+  }
+
+  // -------------------------------------------------------------------- init
+  async function start(config) {
+    client = window.supabase.createClient(config.url, config.anonKey, {
+      auth: { persistSession: false },
+    });
+
+    el("setup").classList.add("hidden");
+    el("setup").classList.remove("flex");
+    el("app").classList.remove("hidden");
+
+    await refresh();
+    subscribeRealtime();
+    clearInterval(state.timer);
+    state.timer = setInterval(() => refresh(), AUTO_REFRESH_MS);
+  }
+
+  el("setup-form").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const config = { url: el("setup-url").value.trim().replace(/\/+$/, ""), anonKey: el("setup-key").value.trim() };
+    if (!/^https?:\/\//i.test(config.url) || config.anonKey.length < 20) {
+      showSetup("Controleer de URL en de anon-sleutel.");
+      return;
+    }
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(config));
+    try {
+      await start(config);
+    } catch (error) {
+      showSetup(`Verbinden mislukt: ${error.message}`);
+    }
+  });
+
+  el("refresh-btn").addEventListener("click", (event) => refresh(event.currentTarget));
+  el("ingest-btn").addEventListener("click", triggerIngest);
+  el("settings-btn").addEventListener("click", () => {
+    localStorage.removeItem(STORAGE_KEY);
+    clearInterval(state.timer);
+    state.channel?.unsubscribe();
+    showSetup("");
+  });
+  el("dismiss-banner").addEventListener("click", () => {
+    sessionStorage.setItem(BANNER_DISMISS_KEY, "1");
+    el("critical-banner").classList.add("hidden");
+  });
+
+  el("filter-query").addEventListener("input", render);
+  el("filter-country").addEventListener("change", render);
+  el("filter-window").addEventListener("change", () => refresh());
+
+  const config = loadConfig();
+  if (config) {
+    start(config).catch((error) => showSetup(`Verbinden mislukt: ${error.message}`));
+  } else {
+    showSetup("");
+  }
+})();
+</script>
 </body>
 </html>
